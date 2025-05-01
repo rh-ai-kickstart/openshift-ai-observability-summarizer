@@ -57,7 +57,20 @@ def build_prompt(metric_dfs, model_name):
             prompt += f"- {label}: No data\n"
         else:
             prompt += f"- {label}: Avg={df['value'].mean():.2f}, Max={df['value'].max():.2f}, Count={len(df)}\n"
-    prompt += "\nPlease summarize:\n1. Key findings\n2. Possible issues\n3. Recommended action items"
+    prompt = f"""
+    You are an MLOps expert analyzing performance metrics for the AI model `{model}`.
+
+    Below is the latest summary of key metrics:
+    {st.session_state.prompt}
+
+    Your task:
+    1. Highlight what is going well.
+    2. Identify potential problems or anomalies.
+    3. Recommend next steps or improvements.
+
+    Please write your analysis in clear bullet points.
+    """
+
     return prompt
 
 def summarize_with_llm(prompt):
