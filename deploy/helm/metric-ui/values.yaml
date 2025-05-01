@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: quay.io/ecosystem-appeng/metric-ui
-  tag: 0.23
+  tag: 0.24
 
 service:
   type: ClusterIP
