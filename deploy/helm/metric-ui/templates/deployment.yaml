@@ -25,8 +25,6 @@ spec:
                   key: PROMETHEUS_URL
             - name: LLM_URL
               value: "{{ .Values.llm.url }}"  
-            - name: LLM_API_TOKEN
-              value: "{{ .Values.llm.apiToken }}"  
             - name: LLM_MODELS
               valueFrom:
                 configMapKeyRef:
