@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: korrel8r
+  namespace: ai-observability-poc
+  labels:
+    app: korrel8r
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: korrel8r
+  template:
+    metadata:
+      labels:
+        app: korrel8r
+    spec:
+      serviceAccountName: korrel8r
+      containers:
+      - name: korrel8r
+        image: quay.io/korrel8r/korrel8r:latest
+        command:
+          - "korrel8r"
+          - "web"
+          - "--verbose=2"
+          - "--config=/etc/korrel8r/korrel8r.yaml"
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PROMETHEUS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-endpoints
+              key: prometheus-url
+        - name: TEMPO_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-endpoints
+              key: tempo-url
+        volumeMounts:
+        - name: config
+          mountPath: /etc/korrel8r
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: config
+        configMap:
+          name: korrel8r-rules
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: korrel8r
+  namespace: ai-observability-poc
+  labels:
+    app: korrel8r
+spec:
+  selector:
+    app: korrel8r
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP

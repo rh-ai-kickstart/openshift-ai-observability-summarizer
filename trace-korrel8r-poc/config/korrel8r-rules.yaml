@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: korrel8r-rules
+  namespace: ai-observability-poc
+data:
+  korrel8r.yaml: |
+    # Korrel8r configuration for PoC
+    # Basic correlation between Prometheus metrics and Tempo traces
+    
+    stores:
+      # Kubernetes API store
+      - domain: k8s
+      
+      # Prometheus/metrics store  
+      - domain: metric
+        metric: "${PROMETHEUS_URL}"
+        
+      # Tempo/traces store
+      - domain: trace
+        tempoStack: "${TEMPO_URL}/api/search"
+    
+    # Basic correlation rules for PoC
+    rules:
+      # Metric to trace correlation
+      - name: MetricToTrace
+        start:
+          domain: metric
+        goal:
+          domain: trace
+        result:
+          query: 'trace:span:{}'
+          
+      # Trace to metric correlation  
+      - name: TraceToMetric
+        start:
+          domain: trace
+        goal:
+          domain: metric
+        result:
+          query: 'up'
