@@ -234,6 +234,94 @@ To generate a report:
 
 ---
 
+## Container Build & Deployment
+
+### Building the Container Images
+
+The application consists of multiple services that need to be built as container images for Kubernetes deployment.
+
+#### **Build FastAPI Backend (metric-mcp)**
+
+**Using Podman:**
+```bash
+# Navigate to the metric_ui directory (important for build context)
+cd metric_ui
+
+# Build for linux/amd64 platform (required for most K8s clusters)
+podman buildx build --platform linux/amd64 \
+  -f api/Dockerfile \
+  -t quay.io/ecosystem-appeng/metric-mcp:your-tag .
+
+# Push to container registry
+podman push quay.io/ecosystem-appeng/metric-mcp:your-tag
+```
+
+**Using Docker:**
+```bash
+# Navigate to the metric_ui directory (important for build context)
+cd metric_ui
+
+# Build for linux/amd64 platform
+docker buildx build --platform linux/amd64 \
+  -f api/Dockerfile \
+  -t quay.io/ecosystem-appeng/metric-mcp:your-tag .
+
+# Push to container registry
+docker push quay.io/ecosystem-appeng/metric-mcp:your-tag
+```
+
+#### **Build Streamlit UI (metric-ui)**
+
+```bash
+# Build UI container
+cd metric_ui
+podman buildx build --platform linux/amd64 \
+  -f ui/Dockerfile \
+  -t quay.io/ecosystem-appeng/metric-ui:your-tag .
+
+# Push to registry
+podman push quay.io/ecosystem-appeng/metric-ui:your-tag
+```
+
+#### **Build Alerting Service (metric-alerting)**
+
+```bash
+# Build alerting container
+cd metric_ui
+podman buildx build --platform linux/amd64 \
+  -f alerting/Dockerfile \
+  -t quay.io/ecosystem-appeng/metric-alerting:your-tag .
+
+# Push to registry
+podman push quay.io/ecosystem-appeng/metric-alerting:your-tag
+```
+
+### Deploy to Kubernetes
+
+After building and pushing the images:
+
+1. **Update Helm values** with your new image tags:
+   ```yaml
+   # deploy/helm/metric-mcp/values.yaml
+   image:
+     repository: quay.io/ecosystem-appeng/metric-mcp
+     tag: your-tag
+   ```
+
+2. **Deploy using Helm**:
+   ```bash
+   cd deploy/helm
+   make install-metric-mcp NAMESPACE=your-namespace
+   ```
+
+### Automated CI/CD Build
+
+The project includes GitHub Actions workflow (`.github/workflows/build-and-push.yml`) that automatically builds and pushes container images when changes are pushed to the repository.
+
+**Image naming convention:** `v1.0.{GITHUB_RUN_NUMBER}`
+
+---
+
 ## Local Development via Port-Forwarding
 
 In order to develop locally faster on the MCP/UI you can leverage port-forwarding to Llamastack, llm-service and Thanos by making use of `scripts/local-dev.sh` script.

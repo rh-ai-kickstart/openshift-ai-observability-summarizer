@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock, mock_open
 from fastapi.testclient import TestClient
 
 # Import the FastAPI app
-from metric_ui.mcp.mcp import app
+from metric_ui.api.mcp import app
 
 
 class TestBase:
@@ -53,7 +53,7 @@ class TestInfrastructureEndpoints(TestBase):
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
     
-    @patch('metric_ui.mcp.mcp.MODEL_CONFIG', {
+    @patch('metric_ui.api.mcp.MODEL_CONFIG', {
         "test-model": {
             "external": False,
             "modelName": "test-model"
@@ -77,7 +77,7 @@ class TestInfrastructureEndpoints(TestBase):
 class TestModelDiscoveryEndpoints(TestBase):
     """Test model and namespace discovery endpoints"""
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_models_endpoint_success(self, mock_get, client):
         """Test models endpoint with successful Prometheus response"""
         mock_response = MagicMock()
@@ -95,7 +95,7 @@ class TestModelDiscoveryEndpoints(TestBase):
         models = response.json()
         assert isinstance(models, list)
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_models_endpoint_prometheus_error(self, mock_get, client):
         """Test models endpoint when Prometheus is unavailable"""
         mock_get.side_effect = Exception("Connection error")
@@ -104,7 +104,7 @@ class TestModelDiscoveryEndpoints(TestBase):
         assert response.status_code == 200
         assert response.json() == []  # Should return empty list on error
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_namespaces_endpoint_success(self, mock_get, client):
         """Test namespaces endpoint with successful response"""
         mock_response = MagicMock()
@@ -122,16 +122,16 @@ class TestModelDiscoveryEndpoints(TestBase):
         namespaces = response.json()
         assert isinstance(namespaces, list)
 
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_namespaces_endpoint_error(self, mock_get, client):
         """Test namespaces endpoint when Prometheus fails"""
         mock_get.side_effect = Exception("Connection error")
-        
+
         response = client.get("/namespaces")
         assert response.status_code == 200
         assert response.json() == []  # Should return empty list on error
-    
-    @patch('metric_ui.mcp.mcp.MODEL_CONFIG', {"model1": {}, "model2": {}})
+
+    @patch('metric_ui.api.mcp.MODEL_CONFIG', {"model1": {}, "model2": {}})
     def test_multi_models_endpoint(self, client):
         """Test multi models endpoint returns configuration keys"""
         response = client.get("/multi_models")
@@ -144,7 +144,7 @@ class TestModelDiscoveryEndpoints(TestBase):
 class TestMetricsDiscoveryEndpoints(TestBase):
     """Test metrics discovery and information endpoints"""
     
-    @patch('metric_ui.mcp.mcp.get_vllm_metrics')
+    @patch('metric_ui.api.mcp.get_vllm_metrics')
     def test_vllm_metrics_endpoint(self, mock_get_metrics, client):
         """Test vLLM metrics endpoint"""
         mock_get_metrics.return_value = {
@@ -158,7 +158,7 @@ class TestMetricsDiscoveryEndpoints(TestBase):
         assert "Prompt Tokens" in metrics
         assert "GPU Usage" in metrics
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_gpu_info_endpoint_success(self, mock_get, client):
         """Test GPU info endpoint with successful response"""
         mock_response = MagicMock()
@@ -179,7 +179,7 @@ class TestMetricsDiscoveryEndpoints(TestBase):
         assert "total_gpus" in gpu_info
         assert "vendors" in gpu_info
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_gpu_info_endpoint_error(self, mock_get, client):
         """Test GPU info endpoint when Prometheus fails"""
         mock_get.side_effect = Exception("Connection error")
@@ -207,7 +207,7 @@ class TestMetricsDiscoveryEndpoints(TestBase):
         assert isinstance(groups, list)
         assert "Workloads & Pods" in groups
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_openshift_namespaces_success(self, mock_get, client):
         """Test OpenShift namespaces discovery"""
         mock_response = MagicMock()
@@ -230,11 +230,11 @@ class TestMetricsDiscoveryEndpoints(TestBase):
         assert "staging" in namespaces
         assert "kube-system" not in namespaces  # System namespace filtered
 
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_openshift_namespaces_error(self, mock_get, client):
         """Test OpenShift namespaces endpoint when Prometheus fails"""
         mock_get.side_effect = Exception("Connection error")
-        
+
         response = client.get("/openshift-namespaces")
         assert response.status_code == 200
         namespaces = response.json()
@@ -247,8 +247,8 @@ class TestMetricsDiscoveryEndpoints(TestBase):
 class TestAnalysisEndpoints(TestBase):
     """Test metric analysis endpoints for both vLLM and OpenShift"""
     
-    @patch('metric_ui.mcp.mcp.requests.get')
-    @patch('metric_ui.mcp.mcp.requests.post')
+    @patch('metric_ui.api.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.post')
     def test_analyze_vllm_success(self, mock_post, mock_get, client, mock_prometheus_response, mock_llm_response):
         """Test successful vLLM analysis with local model"""
         # Mock Prometheus metrics discovery
@@ -284,7 +284,7 @@ class TestAnalysisEndpoints(TestBase):
         assert "metrics" in data
         assert data["model_name"] == "test-model"
     
-    @patch('metric_ui.mcp.mcp.requests.post')  
+    @patch('metric_ui.api.mcp.requests.post')
     def test_analyze_vllm_llm_api_error(self, mock_post, client):
         """Test vLLM analyze endpoint when LLM API fails"""
         mock_post.side_effect = Exception("LLM API error")
@@ -299,8 +299,8 @@ class TestAnalysisEndpoints(TestBase):
         assert response.status_code == 500
         assert "Please check your API Key" in response.json()["detail"]
     
-    @patch('metric_ui.mcp.mcp.requests.get')
-    @patch('metric_ui.mcp.mcp.requests.post')
+    @patch('metric_ui.api.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.post')
     def test_analyze_openshift_cluster_wide(self, mock_post, mock_get, client, mock_prometheus_response, mock_llm_response):
         """Test OpenShift analysis with cluster-wide scope"""
         # Mock Prometheus response
@@ -347,7 +347,7 @@ class TestAnalysisEndpoints(TestBase):
 class TestChatEndpoints(TestBase):
     """Test all chat-related endpoints"""
     
-    @patch('metric_ui.mcp.mcp.requests.post')
+    @patch('metric_ui.api.mcp.requests.post')
     def test_chat_success(self, mock_post, client, mock_llm_response):
         """Test successful basic chat interaction"""
         mock_resp = MagicMock()
@@ -367,8 +367,8 @@ class TestChatEndpoints(TestBase):
         assert "response" in data
         assert isinstance(data["response"], str)
 
-    @patch('metric_ui.mcp.mcp.requests.get')
-    @patch('metric_ui.mcp.mcp.summarize_with_llm')
+    @patch('metric_ui.api.mcp.requests.get')
+    @patch('metric_ui.api.mcp.summarize_with_llm')
     def test_chat_metrics_success(self, mock_llm, mock_get, client):
         """Test successful chat-metrics interaction"""
         # Mock Prometheus response
@@ -376,10 +376,10 @@ class TestChatEndpoints(TestBase):
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {"data": []}
         mock_get.return_value = mock_response
-        
+
         # Mock LLM response with JSON
         mock_llm.return_value = '{"promql": "test_query", "summary": "Test analysis"}'
-        
+
         response = client.post("/chat-metrics", json={
             "model_name": "test-model",
             "question": "What is the GPU usage?",
@@ -387,14 +387,14 @@ class TestChatEndpoints(TestBase):
             "summarize_model_id": "test-model",
             "chat_scope": "namespace_specific"
         })
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "promql" in data
         assert "summary" in data
 
-    @patch('metric_ui.mcp.mcp.requests.get')
-    @patch('metric_ui.mcp.mcp.summarize_with_llm')
+    @patch('metric_ui.api.mcp.requests.get')
+    @patch('metric_ui.api.mcp.summarize_with_llm')
     def test_chat_openshift_success(self, mock_llm, mock_get, client):
         """Test successful OpenShift chat interaction"""
         # Mock Prometheus response
@@ -402,10 +402,10 @@ class TestChatEndpoints(TestBase):
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {"data": {"result": []}}
         mock_get.return_value = mock_response
-        
+
         # Mock LLM response
         mock_llm.return_value = '{"promql": "cluster_query", "summary": "Cluster analysis"}'
-        
+
         response = client.post("/chat-openshift", json={
             "metric_category": "Fleet Overview",
             "scope": "cluster_wide",
@@ -414,7 +414,7 @@ class TestChatEndpoints(TestBase):
             "end_ts": 1640995800,
             "summarize_model_id": "test-model"
         })
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "promql" in data
@@ -437,7 +437,7 @@ class TestReportEndpoints(TestBase):
         assert response.status_code == 400
         assert "No analysis data provided" in response.json()["detail"]
     
-    @patch('metric_ui.mcp.mcp.generate_html_report')
+    @patch('metric_ui.api.mcp.generate_html_report')
     @patch('builtins.open', new_callable=mock_open)
     @patch('os.makedirs')
     def test_generate_html_report_success(self, mock_makedirs, mock_file, mock_generate, client):
@@ -477,14 +477,14 @@ class TestReportEndpoints(TestBase):
         assert response.status_code == 400
         assert "Unsupported format" in response.json()["detail"]
 
-    @patch('metric_ui.mcp.mcp.get_report_path')
+    @patch('metric_ui.api.mcp.get_report_path')
     @patch('os.path.exists')
     def test_download_report_success(self, mock_exists, mock_get_path, client):
         """Test successful report download"""
         mock_exists.return_value = True
         mock_get_path.return_value = "/tmp/reports/test-report.html"
         
-        with patch('metric_ui.mcp.mcp.FileResponse') as mock_file_response:
+        with patch('metric_ui.api.mcp.FileResponse') as mock_file_response:
             mock_file_response.return_value = MagicMock()
             response = client.get("/download_report/test-report-id")
             assert response.status_code == 200
@@ -540,7 +540,7 @@ class TestMetricsCalculationEndpoints(TestBase):
 
 class TestUtilityEndpoints(TestBase):
     """Test utility and debug endpoints"""
-    
+
     def test_all_metrics_endpoint(self, client):
         """Test all-metrics endpoint"""
         response = client.get("/all-metrics")
@@ -551,15 +551,15 @@ class TestUtilityEndpoints(TestBase):
         expected_groups = ["vLLM", "GPU", "OpenShift"]
         for group in expected_groups:
             assert group in data
-    
-    @patch('metric_ui.mcp.mcp.requests.get')
+
+    @patch('metric_ui.api.mcp.requests.get')
     def test_deployment_info_success(self, mock_get, client):
         """Test deployment info endpoint"""
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = {"data": {"result": []}}
         mock_get.return_value = mock_response
-        
+
         response = client.get("/deployment-info?namespace=test-ns&model=test-model")
         assert response.status_code == 200
         data = response.json()
@@ -568,5 +568,5 @@ class TestUtilityEndpoints(TestBase):
         assert "namespace" in data
         assert "model" in data
 
-    
-    
+
+

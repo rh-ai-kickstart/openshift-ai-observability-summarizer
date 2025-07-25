@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROMETHEUS_NAMESPACE="openshift-monitoring"
-LLM_NAMESPACE="${LLM_NAMESPACE:-m1}"
+LLM_NAMESPACE="${LLM_NAMESPACE:-m3}"
 THANOS_PORT=9090
 LLAMASTACK_PORT=8321
 LLAMA_MODEL_PORT=8080
@@ -112,7 +112,7 @@ start_local_services() {
     
     # Start MCP service
     echo -e "${BLUE}🔧 Starting MCP backend...${NC}"
-    (cd metric_ui/mcp && python3 -m uvicorn mcp:app --host 0.0.0.0 --port $MCP_PORT --reload) &
+    (cd metric_ui/api && python3 -m uvicorn mcp:app --host 0.0.0.0 --port $MCP_PORT --reload) &
     MCP_PID=$!
     
     # Wait for MCP to start

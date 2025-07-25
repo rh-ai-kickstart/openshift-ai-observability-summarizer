@@ -2,18 +2,26 @@ import pytest
 import pandas as pd
 from datetime import datetime, timedelta
 
-from metric_ui.mcp.mcp import (
+# Import functions still in API module
+from metric_ui.api.mcp import (
     detect_anomalies,
     describe_trend,
-    compute_health_score,
+    compute_health_score
+)
+
+# Import functions moved to core modules
+from metric_ui.core.llm_client import (
     _clean_llm_summary_string,
-    calculate_metric_stats,
     _validate_and_extract_response,
     extract_time_range_with_info,
     extract_time_range,
     add_namespace_filter,
     fix_promql_syntax,
     format_alerts_for_ui
+)
+
+from metric_ui.core.metrics import (
+    calculate_metric_stats
 )
 
 
@@ -316,30 +324,30 @@ class TestTimeRangeParsing:
         """Should parse common time expressions"""
         query = "cpu usage in the past 30 minutes"
         start_ts, end_ts, info = extract_time_range_with_info(query, None, None)
-        
+
         assert isinstance(start_ts, int)
         assert isinstance(end_ts, int)
         assert end_ts > start_ts
         assert info["duration_str"] == "past 30 minutes"
         assert info["rate_syntax"] == "30m"
-    
+
     def test_extract_time_range_with_info_with_provided_timestamps(self):
         """Should use provided timestamps when no time in query"""
         query = "cpu usage data"  # Simple query that won't trigger dateparser
         start_ts = 1640995200
         end_ts = 1640998800  # 1 hour later
-        
+
         result_start, result_end, info = extract_time_range_with_info(query, start_ts, end_ts)
-        
+
         assert result_start == start_ts
         assert result_end == end_ts
         assert info["duration_str"] == "past 1 hour"
-    
+
     def test_extract_time_range_wrapper(self):
         """extract_time_range should work as a simple wrapper"""
         query = "metrics from past 2 hours"
         start_ts, end_ts = extract_time_range(query, None, None)
-        
+
         assert isinstance(start_ts, int)
         assert isinstance(end_ts, int)
         assert end_ts > start_ts
@@ -347,7 +355,7 @@ class TestTimeRangeParsing:
 
 class TestPromQLManipulation:
     """Test PromQL query manipulation functions"""
-    
+
     @pytest.mark.parametrize("promql,namespace,expected", [
         # No existing labels - should add namespace
         ("cpu_usage", "production", 'cpu_usage{namespace="production"}'),
@@ -364,13 +372,13 @@ class TestPromQLManipulation:
         """Should correctly add or preserve namespace filters in PromQL queries"""
         result = add_namespace_filter(promql, namespace)
         assert result == expected
-    
+
     def test_fix_promql_syntax_trailing_commas(self):
         """Should remove trailing commas in label selectors"""
         promql = 'cpu_usage{job="app",}'
         result = fix_promql_syntax(promql)
         assert result == 'cpu_usage{job="app"}'
-    
+
     def test_fix_promql_syntax_add_rate_time_range(self):
         """Should add time range to rate functions"""
         promql = 'rate(http_requests_total)'
@@ -380,14 +388,14 @@ class TestPromQLManipulation:
 
 class TestAlertFormatting:
     """Test alert formatting for UI display"""
-    
+
     def test_format_alerts_for_ui_empty_alerts(self):
         """Should handle empty alerts list gracefully"""
         result = format_alerts_for_ui("cpu_usage > 90", [])
-        
+
         assert "PromQL Query for Alerts: `cpu_usage > 90`" in result
         assert "No relevant alerts were firing" in result
-    
+
     def test_format_alerts_for_ui_with_basic_alerts(self):
         """Should format basic alerts correctly"""
         alerts_data = [
@@ -398,9 +406,9 @@ class TestAlertFormatting:
                 "labels": {"pod": "app-123", "namespace": "production"}
             }
         ]
-        
+
         result = format_alerts_for_ui("cpu_usage > 90", alerts_data)
-        
+
         assert "PromQL Query for Alerts: `cpu_usage > 90`" in result
         assert "**HighCPU**" in result
         assert "Severity: **warning**" in result

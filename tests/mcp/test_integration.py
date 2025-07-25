@@ -3,16 +3,16 @@ import pandas as pd
 from unittest.mock import patch, MagicMock
 import requests
 
-from metric_ui.mcp.mcp import (
+from metric_ui.api.mcp import (
     fetch_metrics,
     fetch_openshift_metrics,
     fetch_alerts_from_prometheus,
     discover_vllm_metrics,
     discover_dcgm_metrics,
     discover_cluster_metrics_dynamically,
-    _get_models_helper,
     _fetch_all_rule_definitions,
 )
+from metric_ui.core.metrics import get_models_helper
 
 
 class TestBase:
@@ -112,7 +112,7 @@ class TestPrometheusIntegration(TestBase):
     
     # === METRIC FETCHING TESTS ===
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_fetch_metrics_success(self, mock_get, mock_prometheus_query_range_response):
         """Test successful metric fetching from Prometheus"""
         mock_response = MagicMock()
@@ -140,7 +140,7 @@ class TestPrometheusIntegration(TestBase):
         assert "/api/v1/query_range" in call_args[0][0]
         assert call_args[1]["params"]["query"] == 'vllm:request_prompt_tokens_created{model_name="test-model"}'
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_fetch_openshift_metrics_with_namespace(self, mock_get, mock_prometheus_query_range_response):
         """Test OpenShift metrics fetching with namespace filtering"""
         mock_response = MagicMock()
@@ -162,7 +162,7 @@ class TestPrometheusIntegration(TestBase):
         call_args = mock_get.call_args
         assert 'namespace="production"' in call_args[1]["params"]["query"]
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_fetch_alerts_success(self, mock_get, mock_prometheus_alerts_response):
         """Test successful alert fetching"""
         mock_response = MagicMock()
@@ -201,7 +201,7 @@ class TestPrometheusIntegration(TestBase):
         (discover_dcgm_metrics, ["GPU", "Temperature"]),
         (discover_cluster_metrics_dynamically, ["kube", "node"])
     ])
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_discovery_functions_success(self, mock_get, discovery_function, expected_metrics, mock_prometheus_labels_response):
         """Test successful metric discovery functions"""
         mock_response = MagicMock()
@@ -231,7 +231,7 @@ class TestPrometheusIntegration(TestBase):
         (lambda: fetch_openshift_metrics("test_query", 1640995200, 1640995800), pd.DataFrame),
         (lambda: fetch_alerts_from_prometheus(1640995200, 1640995800), tuple)
     ])
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_prometheus_connection_errors(self, mock_get, function_call, expected_empty_type):
         """Test handling of Prometheus connection failures"""
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused")
@@ -248,7 +248,7 @@ class TestPrometheusIntegration(TestBase):
             assert isinstance(result, pd.DataFrame)
             assert result.empty
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_discover_vllm_metrics_connection_error_fallback(self, mock_get):
         """Test vLLM discovery returns fallback metrics on connection error"""
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused")
@@ -266,7 +266,7 @@ class TestPrometheusIntegration(TestBase):
         discover_dcgm_metrics,
         discover_cluster_metrics_dynamically
     ])
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_discovery_functions_connection_error_empty(self, mock_get, discovery_function):
         """Test discovery functions that return empty dict on connection error"""
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused")
@@ -280,7 +280,7 @@ class TestPrometheusIntegration(TestBase):
 class TestPrometheusHelpers(TestBase):
     """Test Prometheus helper functions"""
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_get_models_helper_success(self, mock_get, mock_prometheus_series_response):
         """Test successful model discovery"""
         mock_response = MagicMock()
@@ -288,7 +288,7 @@ class TestPrometheusHelpers(TestBase):
         mock_response.json.return_value = mock_prometheus_series_response
         mock_get.return_value = mock_response
         
-        result = _get_models_helper()
+        result = get_models_helper()
         
         assert isinstance(result, list)
         assert len(result) > 0
@@ -299,7 +299,7 @@ class TestPrometheusHelpers(TestBase):
         call_args = mock_get.call_args
         assert "/api/v1/series" in call_args[0][0]
     
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_fetch_rule_definitions_success(self, mock_get, mock_prometheus_rules_response):
         """Test successful rule definitions fetching"""
         mock_response = MagicMock()
@@ -319,10 +319,10 @@ class TestPrometheusHelpers(TestBase):
         assert "/api/v1/rules" in call_args[0][0]
     
     @pytest.mark.parametrize("helper_function", [
-        _get_models_helper,
+        get_models_helper,
         _fetch_all_rule_definitions
     ])
-    @patch('metric_ui.mcp.mcp.requests.get')
+    @patch('metric_ui.api.mcp.requests.get')
     def test_helper_functions_connection_errors(self, mock_get, helper_function):
         """Test helper functions handle connection errors gracefully"""
         mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused")

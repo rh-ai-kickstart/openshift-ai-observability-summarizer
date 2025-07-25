@@ -44,8 +44,8 @@ omit = [
     "*/test_*",
     "*/__pycache__/*",
     "*/__init__.py",
-    "metric_ui/mcp/report_assets/report_config.py",
-    "metric_ui/mcp/report_assets/report_renderer.py",
+    "metric_ui/api/report_assets/report_config.py",
+    "metric_ui/api/report_assets/report_renderer.py",
     "metric_ui/ui/ui.py",
 ]
 
