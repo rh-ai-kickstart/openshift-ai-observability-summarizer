@@ -1,0 +1,8 @@
+# Official Model Context Protocol SDK with CLI support
+mcp[cli]>=1.12.2
+ 
+# Core dependencies (should match parent project)
+requests>=2.25.0
+pandas>=2.0.0
+scipy>=1.10.0
+numpy>=1.24.0 
