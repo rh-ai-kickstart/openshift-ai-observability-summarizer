@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "ai-observability": {
+      "command": "$OBS_BASE_DIR/.venv/bin/obs-mcp-server",
+      "args": [
+        "--local"
+      ],
+      "env": {
+        "PROMETHEUS_URL": "http://localhost:9090"
+      },
+      "autoApprove": [
+        "list_models",
+        "get_namespaces",
+        "get_metrics",
+        "get_alerts",
+        "analyze_metrics"
+      ],
+      "alwaysAllow": [
+        "list_models",
+        "get_namespaces",
+        "get_metrics",
+        "get_alerts",
+        "analyze_metrics"
+      ],
+      "disabled": false
+    }
+  }
+}

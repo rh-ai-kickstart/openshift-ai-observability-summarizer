@@ -11,12 +11,13 @@ NC='\033[0m' # No Color
 
 # Configuration
 PROMETHEUS_NAMESPACE="openshift-monitoring"
-LLM_NAMESPACE="${LLM_NAMESPACE:-m3}"
+LLM_NAMESPACE="${LLM_NAMESPACE:-test1}"
 METRIC_API_APP="metrics-api-app"
 THANOS_PORT=9090
 LLAMASTACK_PORT=8321
 LLAMA_MODEL_PORT=8080
-MCP_PORT=8000
+# Metrics API (FastAPI) port for local dev; can override via METRICS_API_PORT
+METRICS_API_PORT=${METRICS_API_PORT:-8000}
 UI_PORT=8501
 
 echo -e "${BLUE}🚀 AI Observability Metric Summarizer - Local Development Setup${NC}"
@@ -26,7 +27,7 @@ echo "=============================================================="
 cleanup() {
     echo -e "\n${YELLOW}🧹 Cleaning up services and port-forwards...${NC}"
     pkill -f "oc port-forward" || true
-    pkill -f "uvicorn mcp:app" || true
+    pkill -f "uvicorn.*metrics_api:app" || true
     pkill -f "streamlit run ui.py" || true
     echo -e "${GREEN}✅ Cleanup complete${NC}"
 }
@@ -92,6 +93,26 @@ start_port_forwards() {
     sleep 3  # Give port-forwards time to establish
 }
 
+# Ensure a TCP port is free by terminating any process listening on it
+ensure_port_free() {
+    local port=$1
+    if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  Port $port is in use. Attempting to free it...${NC}"
+        # Try graceful termination first
+        lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | xargs -r kill || true
+        sleep 1
+        # Force kill if still listening
+        if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+            lsof -nP -iTCP:"$port" -sTCP:LISTEN -t | xargs -r kill -9 || true
+        fi
+        if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+            echo -e "${RED}❌ Could not free port $port. Please free it and retry.${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}✅ Port $port is now free${NC}"
+    fi
+}
+
 # This function sets "MODEL_CONFIG" envrionment variable by reading it from "$METRIC_API_APP" deployment
 function set_model_config() {
     # Find metrics-api-app deployment
@@ -124,7 +145,7 @@ start_local_services() {
     export PROMETHEUS_URL="http://localhost:$THANOS_PORT"
     export LLAMA_STACK_URL="http://localhost:$LLAMASTACK_PORT/v1/openai/v1"
     export THANOS_TOKEN="$TOKEN"
-    export MCP_API_URL="http://localhost:$MCP_PORT"
+    export METRICS_API_URL="http://localhost:$METRICS_API_PORT"
     export PROM_URL="http://localhost:$THANOS_PORT"
     
     # macOS weasyprint support
@@ -133,18 +154,19 @@ start_local_services() {
     set_model_config
     
     # Start MCP service
-    echo -e "${BLUE}🔧 Starting MCP backend...${NC}"
-    (cd src/api && python3 -m uvicorn metrics_api:app --host 0.0.0.0 --port $MCP_PORT --reload > log.txt) &
+    echo -e "${BLUE}🔧 Starting Metrics API backend...${NC}"
+    ensure_port_free "$METRICS_API_PORT"
+    (cd src/api && python3 -m uvicorn metrics_api:app --host 0.0.0.0 --port $METRICS_API_PORT --reload > log.txt) &
     MCP_PID=$!
     
     # Wait for MCP to start
     sleep 3
     
     # Test MCP service
-    if curl -s --connect-timeout 5 "http://localhost:$MCP_PORT/models" > /dev/null; then
-        echo -e "${GREEN}✅ MCP backend started successfully${NC}"
+    if curl -s --connect-timeout 5 "http://localhost:$METRICS_API_PORT/models" > /dev/null; then
+        echo -e "${GREEN}✅ Metrics API backend started successfully${NC}"
     else
-        echo -e "${RED}❌ MCP backend failed to start${NC}"
+        echo -e "${RED}❌ Metrics API backend failed to start${NC}"
         exit 1
     fi
     
@@ -173,7 +195,7 @@ main() {
     echo -e "\n${GREEN}🎉 Setup complete! All services are running.${NC}"
     echo -e "\n${BLUE}📋 Services Available:${NC}"
     echo -e "   ${YELLOW}🎨 Streamlit UI: http://localhost:$UI_PORT${NC}"
-    echo -e "   ${YELLOW}🔧 MCP Backend API: http://localhost:$MCP_PORT/docs${NC}"
+    echo -e "   ${YELLOW}🔧 Metrics API: http://localhost:$METRICS_API_PORT/docs${NC}"
     echo -e "   ${YELLOW}📊 Prometheus: http://localhost:$THANOS_PORT${NC}"
     echo -e "   ${YELLOW}🦙 LlamaStack: http://localhost:$LLAMASTACK_PORT${NC}"
     echo -e "   ${YELLOW}🤖 Llama Model: http://localhost:$LLAMA_MODEL_PORT${NC}"
