@@ -28,6 +28,10 @@ jobs:
             context: src/alerting
             dockerfile: src/alerting/Dockerfile
             image-name: metric-alerting
+          - name: mcp-server
+            context: src
+            dockerfile: src/mcp-server/Dockerfile
+            image-name: metrics-mcp-server
 
 
     steps:

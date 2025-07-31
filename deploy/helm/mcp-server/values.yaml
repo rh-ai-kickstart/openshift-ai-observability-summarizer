@@ -1,0 +1,16 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/ecosystem-appeng/obs-mcp-server
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8080
+
+config:
+  prometheusUrl: "https://thanos-querier.openshift-monitoring.svc.cluster.local:9091"
+
+rbac:
+  createGrafanaRole: false  # Reuse existing role from metrics-api 

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: metrics-mcp-server
+description: A Helm chart for AI Metrics MCP Server
+type: application
+version: 0.1.0
+appVersion: "1.0.0" 
