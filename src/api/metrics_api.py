@@ -239,10 +239,8 @@ def chat(req: ChatRequest):
         prompt = build_chat_prompt(
             user_question=req.question, metrics_summary=req.prompt_summary
         )
-
         # Get LLM response using helper function
-        response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key)
-
+        response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key, max_tokens=1500)
         return {"response": _clean_llm_summary_string(response)}
     except Exception as e:
         # Handle API key errors and other LLM-related errors
@@ -280,11 +278,9 @@ def chat_metrics(req: ChatMetricsRequest):
         # Step 4: Send results to LLM for summary
         summary_namespace = "Fleet-wide" if is_fleet_wide else req.namespace
         summary = generate_llm_summary(req.question, thanos_data, req.summarize_model_id, req.api_key, summary_namespace)
-        
         # Step 5: Return summary for UI
         # Find the most relevant PromQL for the question (not just the first one)
         primary_promql = find_primary_promql_for_question(req.question, promql_queries)
-        
         return {
             "promql": primary_promql,
             "summary": summary
@@ -1925,32 +1921,30 @@ def generate_llm_summary(question: str, thanos_data: Dict[str, Any], model_id: s
     for metric_name, data in relevant_metrics[:2]:  # Max 2 metrics
         data_context += f"- {metric_name}: {data['latest_value']:.2f} (avg: {data['average_value']:.2f})\n"
     
-    # Create contextual LLM prompt
+    # Create contextual LLM prompt  
     prompt = f"""{data_context}
 
 QUESTION: {question}
 
-You are a senior Site Reliability Engineer analyzing production metrics. Provide a professional analysis that:
-
-1. States the current metric value with proper units
-2. Explains what this metric specifically measures in the context
-3. Assesses if this value is optimal, normal, concerning, or critical
-4. Provides operational context about what this means for the system
+Provide a concise answer that:
+1. States the current metric value with units
+2. Assesses the status (Normal/Warning/Critical) 
+3. Gives brief operational summary
 
 EXAMPLE: "Current pod count: 5 Running pods. This indicates healthy horizontal scaling for the vLLM inference workload, ensuring sufficient capacity for model serving requests. Status: Normal."
 
 GUIDELINES:
-- Be specific about what the metric measures (not generic)
-- Include actual values with context
-- Use professional terminology
 - Assess against realistic operational baselines
-- Focus on actionable insights
+- Answer the question only based on the metrics data
+- Do not add additional notes or explainations.
+- Keep response under 100 words
+
 
 RESPONSE:"""
     
     # Call LLM with reasonable token limit for contextual summaries
     try:
-        return summarize_with_llm(prompt, model_id, api_key, max_tokens=100)
+        return summarize_with_llm(prompt, model_id, api_key, max_tokens=1500)
     except Exception as e:
         return f"Error generating summary: {e}"
 
@@ -2023,9 +2017,7 @@ User Question: {req.question}
 
 Provide a concise technical response focusing on operational insights and recommendations. Respond with JSON format:
 {{"promql": "relevant_query_if_applicable", "summary": "your_analysis"}}"""
-
         llm_response = summarize_with_llm(prompt, req.summarize_model_id, req.api_key)
-
         # Simple JSON parsing
         try:
             # Try to extract JSON from response

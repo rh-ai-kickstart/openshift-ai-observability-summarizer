@@ -13,6 +13,16 @@ from dateparser.search import search_dates
 
 from .config import MODEL_CONFIG, LLM_API_TOKEN, LLAMA_STACK_URL, VERIFY_SSL
 
+# LLM Generation Configuration Constants
+DETERMINISTIC_TEMPERATURE = 0  # Zero temperature for consistent, deterministic output
+DEFAULT_MAX_TOKENS = 6000  # Maximum tokens allowed
+DEFAULT_SSL_VERIFICATION = True  # Enable SSL verification for external API calls
+
+# Time Range Configuration Constants
+DEFAULT_TIME_RANGE_HOURS = 1  # Default lookback period when no time specified
+DEFAULT_RATE_SYNTAX = "1h"  # Default PromQL time range syntax
+FALLBACK_RATE_SYNTAX = "5m"  # Fallback PromQL time range for shorter queries
+
 
 def _make_api_request(
     url: str, headers: dict, payload: dict, verify_ssl: bool = True
@@ -68,7 +78,7 @@ def summarize_with_llm(
     summarize_model_id: str,
     api_key: Optional[str] = None,
     messages: Optional[List[Dict[str, str]]] = None,
-    max_tokens: int = 1000,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
     """
     Summarize content using an LLM (local or external).
@@ -78,7 +88,7 @@ def summarize_with_llm(
         summarize_model_id: Model identifier from MODEL_CONFIG
         api_key: API key for external models (optional for local models)
         messages: Previous conversation messages (optional)
-        max_tokens: Maximum number of tokens to generate (default: 1000)
+        max_tokens: Maximum number of tokens to generate (default: 6000)
         
     Returns:
         LLM-generated summary text
@@ -123,11 +133,11 @@ def summarize_with_llm(
             payload = {
                 "model": model_name,
                 "messages": llm_messages,
-                "temperature": 0.5,
+                "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
                 "max_tokens": max_tokens,
             }
 
-        response_json = _make_api_request(api_url, headers, payload, verify_ssl=True)
+        response_json = _make_api_request(api_url, headers, payload, verify_ssl=DEFAULT_SSL_VERIFICATION)
         return _validate_and_extract_response(
             response_json, is_external=True, provider=provider
         )
@@ -147,14 +157,14 @@ def summarize_with_llm(
         payload = {
             "model": summarize_model_id,
             "prompt": prompt_text,
-            "temperature": 0.5,
+            "temperature": DETERMINISTIC_TEMPERATURE,  # Deterministic output
             "max_tokens": max_tokens,
         }
-
+        print(f"prompt_text: {prompt_text}")
         response_json = _make_api_request(
             f"{LLAMA_STACK_URL}/completions", headers, payload, verify_ssl=VERIFY_SSL
         )
-
+        print(f"response_json: {response_json}")
         return _validate_and_extract_response(
             response_json, is_external=False, provider="LLM"
         )
@@ -163,19 +173,20 @@ def summarize_with_llm(
 def build_chat_prompt(user_question: str, metrics_summary: str) -> str:
     """Build a chat prompt combining user question with metrics context"""
     prompt = f"""
-You are an expert AI model performance analyst. I have some vLLM metrics data and need help interpreting it.
-
-Here's the metrics summary:
+Metrics Summary:
 {metrics_summary}
 
-User question: {user_question}
+Question: {user_question}
 
-Please provide a helpful analysis focusing on:
-1. Directly answering the user's question based on the metrics
-2. Any performance insights or recommendations
-3. Potential issues or optimizations to consider
+Provide a concise answer that:
+1. Directly answers the question using the metrics data
+2. States the current status (Normal/Warning/Critical)
+3. Gives brief recommendations if needed
 
-Keep your response focused and actionable.
+Keep response under 100 words.
+Stop after you have provided the answer and do not add additional explanations or notes.
+
+ANSWER:
 """
     return prompt.strip()
 
@@ -185,7 +196,7 @@ def build_prompt(metric_dfs, model_name: str) -> str:
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     prompt = f"""
-You are an expert AI model performance analyst. Please analyze the following vLLM metrics for model '{model_name}' and provide a comprehensive summary.
+You are a machine learning model performance analysis expert. Please analyze the following vLLM metrics for model '{model_name}' and provide a comprehensive summary.
 
 Current Analysis Time: {current_time}
 
@@ -209,8 +220,11 @@ ANALYSIS REQUIREMENTS:
 2. **Key Metrics Analysis**: Interpret the most important metrics
 3. **Trends and Patterns**: Identify any concerning trends
 4. **Recommendations**: Actionable suggestions for optimization
-5. **Alerting**: Any metrics that warrant immediate attention
+5. **Alerting**: Summarize top 3 issues that are happening and need attention
 
+In your response, do not add or ask additional questions. 
+Answer each requirement above concisely as a summary in less than 150 words. 
+Stop after you have answered requirement 5 and do not add explainations or notes.
 Please provide a clear, structured analysis that would be useful for both technical teams and stakeholders.
 """
     
@@ -231,7 +245,7 @@ def build_openshift_prompt(
     else:
         scope = f"namespace **{namespace}**" if namespace else "cluster-wide"
 
-    header = f"You are evaluating OpenShift **{metric_category}** metrics for {scope}.\n\n📊 **Metrics**:\n"
+    header = f"You are an expert in OpenShift platform monitoring and operations. You are evaluating OpenShift **{metric_category}** metrics for {scope}.\n\n📊 **Metrics**:\n"
     analysis_focus = f"{metric_category.lower()} performance and health"
 
     lines = []
@@ -254,8 +268,13 @@ def build_openshift_prompt(
 1. What's the current state of {analysis_focus}?
 2. Are there any performance or reliability concerns?
 3. What actions should be taken?
-4. Any optimization recommendations?"""
+4. Any optimization recommendations?
 
+Do not add or ask additional questions. Your response should only include the questions and answers for the above questions.
+For each question, state the question in bold font, and then answer each question concisely and directly with maximum of 150 words.
+If there is no direct answer to a question, say so and do not speculate or add additional information. 
+Stop after you have answered question 4 and do not add explainations or notes.
+"""
     return f"""{header}
 {chr(10).join(lines)}
 
@@ -282,10 +301,10 @@ def build_openshift_chat_prompt(
     
     # Build time range context
     time_context = ""
-    time_range_syntax = "5m"  # default
+    time_range_syntax = FALLBACK_RATE_SYNTAX  # default
     if time_range_info:
         time_duration = time_range_info.get("duration_str", "")
-        time_range_syntax = time_range_info.get("rate_syntax", "5m")
+        time_range_syntax = time_range_info.get("rate_syntax", FALLBACK_RATE_SYNTAX)
         time_context = f"""**🕐 TIME RANGE CONTEXT:**
 The user asked about: **{time_duration}**
 Use time range syntax `[{time_range_syntax}]` in PromQL queries where appropriate.
@@ -365,10 +384,10 @@ def build_flexible_llm_prompt(
     
     # Build time range context for the LLM
     time_context = ""
-    time_range_syntax = "5m"  # default
+    time_range_syntax = FALLBACK_RATE_SYNTAX  # default
     if time_range_info:
         time_duration = time_range_info.get("duration_str", "")
-        time_range_syntax = time_range_info.get("rate_syntax", "5m")
+        time_range_syntax = time_range_info.get("rate_syntax", FALLBACK_RATE_SYNTAX)
         time_context = f"""**🕐 CRITICAL TIME RANGE REQUIREMENTS:**
 The user asked about: **{time_duration}**
 
@@ -600,10 +619,10 @@ def extract_time_range_with_info(
         end_time_utc = end_time_naive.replace(tzinfo=timezone.utc)
 
         time_range_info = {
-            "duration_str": f"on {target_date.strftime('%Y-%m-%d')}",
-            "rate_syntax": "5m",
-            "hours": 24
-        }
+                "duration_str": f"on {target_date.strftime('%Y-%m-%d')}",
+                "rate_syntax": FALLBACK_RATE_SYNTAX,
+                "hours": 24
+            }
 
         return int(start_time_utc.timestamp()), int(end_time_utc.timestamp()), time_range_info
 
@@ -643,12 +662,12 @@ def extract_time_range_with_info(
     print("No time in query or request, defaulting to the last 1 hour.")
     now = datetime.now()
     end_time = now
-    start_time = end_time - timedelta(hours=1)
+    start_time = end_time - timedelta(hours=DEFAULT_TIME_RANGE_HOURS)
     
     time_range_info = {
         "duration_str": "past 1 hour",
-        "rate_syntax": "1h",  # Use exact 1 hour, not 5m
-        "hours": 1
+        "rate_syntax": DEFAULT_RATE_SYNTAX,  # Use default rate syntax for fallback
+        "hours": DEFAULT_TIME_RANGE_HOURS
     }
     
     return int(start_time.timestamp()), int(end_time.timestamp()), time_range_info
@@ -679,7 +698,7 @@ def add_namespace_filter(promql: str, namespace: str) -> str:
         return f'{promql}{{namespace="{namespace}"}}'
 
 
-def fix_promql_syntax(promql: str, time_range_syntax: str = "5m") -> str:
+def fix_promql_syntax(promql: str, time_range_syntax: str = FALLBACK_RATE_SYNTAX) -> str:
     """
     Post-process PromQL to fix common syntax issues and ensure proper time range syntax
     """

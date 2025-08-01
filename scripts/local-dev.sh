@@ -112,7 +112,7 @@ start_local_services() {
     
     # Start MCP service
 echo -e "${BLUE}🔧 Starting MCP backend...${NC}"
-(cd src/api && python3 -m uvicorn metrics_api:app --host 0.0.0.0 --port $MCP_PORT --reload) &
+(cd src/api && python3 -m uvicorn metrics_api:app --host 0.0.0.0 --port $MCP_PORT --reload > log.txt) &
     MCP_PID=$!
     
     # Wait for MCP to start
