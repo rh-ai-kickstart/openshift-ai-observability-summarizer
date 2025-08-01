@@ -12,6 +12,8 @@ MAKEFLAGS += --no-print-directory
 POSTGRES_USER ?= postgres
 POSTGRES_PASSWORD ?= rag_password
 POSTGRES_DBNAME ?= rag_blueprint
+MINIO_USER ?= minio_rag_user
+MINIO_PASSWORD ?= minio_rag_password
 HF_TOKEN ?= $(shell bash -c 'read -r -p "Enter Hugging Face Token: " HF_TOKEN; echo $$HF_TOKEN')
 RAG_CHART := rag
 METRIC_MCP_RELEASE_NAME ?= metrics-api
@@ -79,6 +81,10 @@ helm_pgvector_args = \
     --set pgvector.secret.password=$(POSTGRES_PASSWORD) \
     --set pgvector.secret.dbname=$(POSTGRES_DBNAME)
 
+helm_minio_args = \
+    --set minio.secret.user=$(MINIO_USER) \
+    --set minio.secret.password=$(MINIO_PASSWORD)
+
 # Default target
 .PHONY: help
 help:
@@ -102,6 +108,11 @@ help:
 	@echo "  {SAFETY,LLM}_URL         - Model URL"
 	@echo "  {SAFETY,LLM}_API_TOKEN   - Model API token for remote models"
 	@echo "  {SAFETY,LLM}_TOLERATION  - Model pod toleration"
+	@echo "  POSTGRES_USER            - PostgreSQL username (default: postgres)"
+	@echo "  POSTGRES_PASSWORD        - PostgreSQL password (default: rag_password)"
+	@echo "  POSTGRES_DBNAME          - PostgreSQL database name (default: rag_blueprint)"
+	@echo "  MINIO_USER               - MinIO username (default: minio_rag_user)"
+	@echo "  MINIO_PASSWORD           - MinIO password (default: minio_rag_password)"
 	@echo "  ALERTS                   - Set to TRUE to install alerting with main deployment"
 	@echo "  CUSTOM_INGESTION_PIPELINE_VALUES - Custom ingestion pipeline values (full path)"
 	@echo "  CUSTOM_INGESTION_PIPELINE_NAME   - Custom ingestion pipeline name"
@@ -163,12 +174,14 @@ install-rag: namespace
 	@$(eval LLM_SERVICE_ARGS := $(call helm_llm_service_args))
 	@$(eval LLAMA_STACK_ARGS := $(call helm_llama_stack_args))
 	@$(eval PGVECTOR_ARGS := $(call helm_pgvector_args))
+	@$(eval MINIO_ARGS := $(call helm_minio_args))
 	@echo "Installing $(RAG_CHART) helm chart (backend services only)"
 	@helm -n $(NAMESPACE) upgrade --install $(RAG_CHART) $(RAG_CHART) \
 	--atomic --timeout 10m \
 	$(LLM_SERVICE_ARGS) \
 	$(LLAMA_STACK_ARGS) \
-	$(PGVECTOR_ARGS)
+	$(PGVECTOR_ARGS) \
+	$(MINIO_ARGS)
 	@echo "Waiting for model services to deploy. It will take around 10-15 minutes depending on the size of the model..."
 	@oc wait -n $(NAMESPACE) --for=condition=Ready --timeout=60m inferenceservice --all ||:
 	@echo "$(RAG_CHART) installed successfully"
@@ -186,8 +199,12 @@ install: namespace depend install-rag install-metric-mcp install-metric-ui delet
 uninstall:
 	@echo "Uninstalling $(RAG_CHART) helm chart"
 	@helm -n $(NAMESPACE) uninstall $(RAG_CHART)
-	@echo "Removing pgvector and minio PVCs from $(NAMESPACE)"
+	@echo "Removing pgvector and MinIO resources from $(NAMESPACE)"
 	@oc get pvc -n $(NAMESPACE) -o custom-columns=NAME:.metadata.name | grep -E '^(pg|minio)-data' | xargs -I {} oc delete pvc -n $(NAMESPACE) {} ||:
+	@echo "Removing MinIO secrets from $(NAMESPACE)"
+	@oc get secrets -n $(NAMESPACE) -o custom-columns=NAME:.metadata.name | grep -E '^minio' | xargs -I {} oc delete secret -n $(NAMESPACE) {} ||:
+	@echo "Removing MinIO configmaps from $(NAMESPACE)"
+	@oc get configmaps -n $(NAMESPACE) -o custom-columns=NAME:.metadata.name | grep -E '^minio' | xargs -I {} oc delete configmap -n $(NAMESPACE) {} ||:
 	@if helm list -n $(NAMESPACE) -q | grep -q "^$(ALERTING_RELEASE_NAME)$$"; then \
 		echo "Detected alerting chart $(ALERTING_RELEASE_NAME). Uninstalling alerting..."; \
 		$(MAKE) uninstall-alerts NAMESPACE=$(NAMESPACE); \
