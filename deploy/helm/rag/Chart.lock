@@ -8,5 +8,8 @@ dependencies:
 - name: pgvector
   repository: https://rh-ai-kickstart.github.io/ai-architecture-charts
   version: 0.1.0
-digest: sha256:f492dc5f61f7935bbdd9ff8626b6a0be36738e5d37277e64783b166f6433a1e0
-generated: "2025-06-30T11:46:23.027461822+03:00"
+- name: minio
+  repository: https://rh-ai-kickstart.github.io/ai-architecture-charts
+  version: 0.1.0
+digest: sha256:e89067e216450ccf1292e08085f9cb1049025ea17778f841abfff5788ad76e28
+generated: "2025-07-28T12:30:15.220032+05:30"

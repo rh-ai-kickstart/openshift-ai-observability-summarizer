@@ -15,3 +15,6 @@ dependencies:
   - name: pgvector
     version: 0.1.0
     repository: https://rh-ai-kickstart.github.io/ai-architecture-charts  
+  - name: minio
+    version: 0.1.0
+    repository: https://rh-ai-kickstart.github.io/ai-architecture-charts
