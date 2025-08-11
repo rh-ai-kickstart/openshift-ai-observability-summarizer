@@ -1,0 +1,197 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observability-backend
+  namespace: ai-observability-poc
+  labels:
+    app: observability-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: observability-backend
+  template:
+    metadata:
+      labels:
+        app: observability-backend
+    spec:
+      containers:
+      - name: observability-backend
+        image: python:3.11-slim
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: KORREL8R_URL
+          value: "http://korrel8r:8080"
+        - name: PROMETHEUS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-endpoints
+              key: prometheus-url
+        - name: TEMPO_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-endpoints
+              key: tempo-url
+        - name: LLM_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: llm-config
+              key: llm-endpoint
+        - name: LLM_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: llm-config
+              key: llm-model
+        - name: LLM_MAX_TOKENS
+          valueFrom:
+            configMapKeyRef:
+              name: llm-config
+              key: max-tokens
+        command:
+        - /bin/bash
+        - -c
+        - |
+          pip install fastapi uvicorn aiohttp requests
+          
+          # Create app directory and the backend service
+          mkdir -p /app
+          cat > /app/main.py << 'EOF'
+          from fastapi import FastAPI
+          from fastapi.middleware.cors import CORSMiddleware
+          import asyncio
+          import aiohttp
+          import os
+          import json
+          from datetime import datetime
+          
+          app = FastAPI(title="PoC Observability Backend")
+          
+          app.add_middleware(
+              CORSMiddleware,
+              allow_origins=["*"],
+              allow_credentials=True,
+              allow_methods=["*"],
+              allow_headers=["*"],
+          )
+          
+          # Service URLs from environment
+          KORREL8R_URL = os.getenv("KORREL8R_URL", "http://korrel8r:8080")
+          LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "http://llm-d-inference-gateway-istio.llm-d.svc.cluster.local:80")
+          LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.2-3b-instruct")
+          
+          @app.get("/health")
+          async def health():
+              return {"status": "healthy", "llm_endpoint": LLM_ENDPOINT}
+          
+          @app.post("/analyze/correlation")
+          async def analyze_correlation(payload: dict):
+              """Analyze correlation results with LLM"""
+              try:
+                  # Get correlation from Korrel8r
+                  async with aiohttp.ClientSession() as session:
+                      korrel8r_payload = {
+                          "start": payload.get("start_signal"),
+                          "goal": payload.get("goal_type", "trace"),
+                          "depth": 2
+                      }
+                      
+                      async with session.post(
+                          f"{KORREL8R_URL}/api/v1alpha1/correlate",
+                          json=korrel8r_payload,
+                          timeout=30
+                      ) as resp:
+                          if resp.status == 200:
+                              correlations = await resp.json()
+                          else:
+                              return {"error": f"Korrel8r failed: {resp.status}"}
+                      
+                      # Analyze with LLM
+                      llm_analysis = await analyze_with_llm(correlations, payload.get("description", ""))
+                      
+                      return {
+                          "correlations": correlations,
+                          "llm_analysis": llm_analysis,
+                          "timestamp": datetime.now().isoformat()
+                      }
+                      
+              except Exception as e:
+                  return {"error": str(e)}
+          
+          async def analyze_with_llm(correlations, description):
+              """Send correlation data to LLM for analysis"""
+              try:
+                  # Build analysis prompt
+                  prompt = f"""You are an expert SRE analyzing observability correlations.
+          
+          INCIDENT: {description}
+          CORRELATIONS: {json.dumps(correlations, indent=2)}
+          
+          Provide a JSON analysis with:
+          - root_cause: Most likely cause
+          - impact: Severity assessment  
+          - recommendations: 3 specific actions
+          - severity: low/medium/high
+          
+          Analysis:"""
+                  
+                  async with aiohttp.ClientSession() as session:
+                      llm_payload = {
+                          "model": LLM_MODEL,
+                          "prompt": prompt,
+                          "max_tokens": 1000,
+                          "temperature": 0.1
+                      }
+                      
+                      headers = {"Content-Type": "application/json"}
+                      async with session.post(
+                          f"{LLM_ENDPOINT}/v1/completions",
+                          json=llm_payload,
+                          headers=headers,
+                          timeout=60
+                      ) as resp:
+                          if resp.status == 200:
+                              result = await resp.json()
+                              text = result.get("choices", [{}])[0].get("text", "")
+                              
+                              # Try to parse JSON response
+                              try:
+                                  return json.loads(text.strip())
+                              except:
+                                  return {"analysis": text, "parsed": False}
+                          else:
+                              return {"error": f"LLM failed: {resp.status}"}
+                              
+              except Exception as e:
+                  return {"error": f"LLM analysis failed: {str(e)}"}
+          
+          if __name__ == "__main__":
+              import uvicorn
+              uvicorn.run(app, host="0.0.0.0", port=8000)
+          EOF
+          
+          python /app/main.py
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-backend
+  namespace: ai-observability-poc
+  labels:
+    app: observability-backend
+spec:
+  selector:
+    app: observability-backend
+  ports:
+  - name: http
+    port: 8000
+    targetPort: 8000
+  type: ClusterIP
