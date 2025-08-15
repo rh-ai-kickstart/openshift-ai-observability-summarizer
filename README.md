@@ -69,6 +69,18 @@ OpenShift AI Observability Summarizer is an **open source, CNCF-style project** 
 ### **6. Distributed Tracing Integration**
 - Tracing support with OpenTelemetry and Tempo to monitor request flows across your AI services.
 
+### **6. AI Assistant Integration (MCP Server)**
+- **Model Context Protocol (MCP) server** for AI assistants (Claude Desktop, Cursor IDE)
+- **Natural language analysis** - ask questions like "What is the GPU temperature?"
+- **Real-time data access** - connects directly to Prometheus/Thanos
+- **AI-powered insights** - full LLM integration for intelligent metric analysis
+
+📖 **Quick Setup**: 
+```bash
+cd src/mcp_server && python setup_integration.py
+```
+See [`src/mcp_server/README.md`](src/mcp_server/README.md) for complete documentation.
+
 ---
 
 ### GPU Monitoring
@@ -94,6 +106,19 @@ Monitor GPU health across your entire OpenShift cluster:
 
 ### Core Components
 
+### **Monitoring Stack**
+- **Prometheus**: Prometheus scrapes the /metrics endpoint offered by vLLM. It can store metrics itself in its own time-series database on a local disk which is
+                  highly optimized for fast queries on recent data. This is perfect for real-time monitoring and alerting but is not
+                  ideal for long term and multi-year storage. This is where Thanos Querier comes in.
+- **Thanos Querier**: Extends Prometheus by solving the problem of long-term retention. Thanos is capable of taking data blocks that Prometheus saves to
+                      its local disk and uploading them to inexpensive and durable object storage, like Amazon S3, Google Cloud Storage, or Azure Blob Storage.
+                      Querier gives you a cost-effective way of retaining years of metrics data available for historical analysis and trend reporting.
+                      Querier sidecars run alongside your Prometheus servers, providing access to real-time and recent metrics.                  
+- **DCGM**: GPU monitoring and telemetry
+- **Streamlit UI**: Multi-dashboard interface (vLLM, OpenShift, Chat)
+- **FastAPI Backend**: metrics-api for web UI and report generation
+- **MCP Server**: Model Context Protocol server for AI assistant integration
+- **Report Generator**: PDF/HTML/Markdown export capabilities
 - **llm-service:** LLM inference (Llama models)
 - **llama-stack:** Backend API
 - **vLLM:** Model serving, exports Prometheus /metrics
@@ -109,7 +134,8 @@ Monitor GPU health across your entire OpenShift cluster:
 1. **vLLM Dashboard**: Monitor model performance, GPU usage, latency
 2. **OpenShift Dashboard**: Fleet monitoring with cluster-wide and namespace views
 3. **Chat Interface**: Interactive Q&A with metrics-aware AI assistant
-4. **Report Generator**: Automated analysis reports in multiple formats
+4. **MCP Server**: AI assistant integration via Model Context Protocol
+5. **Report Generator**: Automated analysis reports in multiple formats
 
 ---
 
@@ -409,7 +435,7 @@ The project includes GitHub Actions workflow (`.github/workflows/build-and-push.
 
 ## Local Development via Port-Forwarding
 
-In order to develop locally faster on the metrics API/UI you can leverage port-forwarding to Llamastack, llm-service and Thanos.
+For local development of the metrics API/UI and MCP server, use the unified development environment script that handles port-forwarding to Llamastack, LLM service, and Thanos.
 
 **Pre-requisites**:
 1. You have a deployment on the cluster already.
@@ -433,26 +459,36 @@ If you prefer to run the script manually, follow these steps:
 1. **Make sure you are logged into the cluster and can execute `oc` commands against the cluster.**
 2. Install `uv` by following instructions on the [uv website](https://github.com/astral-sh/uv)
 3. Sync up the environment and development dependencies using `uv` in the base directory:
+### Quick Start
 ```bash
+# 1. Setup environment
 uv sync --group dev
-```
-   The `uv sync` command performs the following tasks:
-   - Find or download an appropriate Python version
-   - Create a virtual environment in `.venv` folder
-   - Build complete dependency using `pyproject.toml` (and `uv.lock`) file(s)
-   - Sync up project dependencies in the virtual environment
-   
-4. Activate the virtual environment:
-```bash
 source .venv/bin/activate
-```
-5. Export the namespace where the kickstart is deployed:
-```sh
+
+# 2. Export your namespace  
 export LLM_NAMESPACE=<DESIRED_NAMESPACE>
-```
-6. Run the script by executing the following command:
-```bash
+
+# 3. Start development environment (includes all port forwarding)
 ./scripts/local-dev.sh
+```
+
+### What the script does:
+- ✅ **Port forwards Prometheus/Thanos** (localhost:9090)
+- ✅ **Port forwards LLM server** (localhost:8321) 
+- ✅ **Starts metrics API** (localhost:8000)
+- ✅ **Starts Streamlit UI** (localhost:8501)
+- ✅ **Configures environment** for MCP server development
+
+### For MCP/AI Assistant Development
+After running `scripts/local-dev.sh`, you can:
+
+```bash
+# Configure AI assistants (Claude Desktop + Cursor IDE)
+cd src/mcp_server
+python setup_integration.py
+
+# Test MCP server
+obs-mcp-server --test-config
 ```
 
 The output should look like this:

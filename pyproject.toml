@@ -20,7 +20,11 @@ dependencies = [
     "llama-stack-client>=0.2.12",
     "fire>=0.7.0",
     "pytest>=8.4.1",
+    "fastmcp>=2.11",
     "pytest-cov>=6.2.1",
+    "structlog>=25.0.0",
+    "trio>=0.30.0",
+    "mcp[client]>=1.13.0",
 ]
 
 [dependency-groups]

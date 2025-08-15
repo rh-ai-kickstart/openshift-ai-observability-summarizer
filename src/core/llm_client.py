@@ -94,7 +94,7 @@ def summarize_with_llm(
         messages: Previous conversation messages (optional)
         max_tokens: Maximum number of tokens to generate (default: 6000)
         enable_validation: Whether to enable response validation and cleanup (default: True)
-        
+
     Returns:
         LLM-generated summary text (cleaned if validation enabled)
     """
@@ -146,7 +146,7 @@ def summarize_with_llm(
         raw_response = _validate_and_extract_response(
             response_json, is_external=True, provider=provider
         )
-        
+
         # For external models, no need to do response validation and cleanup
         return raw_response
 
@@ -174,7 +174,7 @@ def summarize_with_llm(
         raw_response = _validate_and_extract_response(
             response_json, is_external=False, provider="LLM"
         )
-        
+
         # Apply response validation and cleanup if enabled
         if enable_validation:
             validation_result = ResponseValidator.clean_response(raw_response, response_type, prompt)
