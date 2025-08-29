@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-config
+  namespace: ai-observability-poc
+data:
+  # LLM service configuration
+  llm-endpoint: "http://llm-d-inference-gateway-istio.llm-d.svc.cluster.local:80"
+  # Alternative if it's in a different namespace:
+  # llm-endpoint: "http://llm-d-inference-gateway.llm-namespace.svc.cluster.local:80"
+  
+  # Or if accessing via NodePort from within minikube:
+  # llm-endpoint: "http://minikube-ip:30256"
+  
+  llm-model: "llama-3.2-3b-instruct"  # Adjust to your model
+  max-tokens: "4096"
+  timeout: "60"

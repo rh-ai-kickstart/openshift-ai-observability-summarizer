@@ -1,0 +1,14 @@
+# Copy this file to endpoints.yaml and update with your actual endpoints
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: observability-endpoints
+  namespace: ai-observability-poc
+data:
+  # Update these URLs to match your minikube cluster setup
+  prometheus-url: "http://prometheus-kube-prometheus-prometheus.llm-d-monitoring:9090"
+  tempo-url: "http://tempo.llm-d-monitoring.svc.cluster.local:3200"
+  
+  # If your endpoints are external to minikube, use format like:
+  # prometheus-url: "http://192.168.49.2:30090"  # minikube node IP + NodePort
+  # tempo-url: "http://192.168.49.2:30320"

@@ -1,0 +1,623 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: observe-ui-code
+  namespace: ai-observability-poc
+data:
+  observe_ui.py: |
+    import streamlit as st
+    import requests
+    import pandas as pd
+    import plotly.express as px
+    import plotly.graph_objects as go
+    from datetime import datetime, timedelta
+    import os
+    import json
+    from scipy.stats import linregress
+    
+    KORREL8R_URL = os.getenv("KORREL8R_URL", "http://korrel8r:8080")
+    BACKEND_API_URL = os.getenv("BACKEND_API_URL", "http://observability-backend:8000")
+    PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "")
+    TEMPO_URL = os.getenv("TEMPO_URL", "")
+    LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "http://llm-d-inference-gateway-istio.llm-d.svc.cluster.local:80")
+    
+    # Page Setup
+    st.set_page_config(page_title="AI Observability PoC", layout="wide")
+    
+    # Enhanced CSS styling
+    st.markdown("""
+    <style>
+        .correlation-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem;
+            border-radius: 12px;
+            margin: 0.5rem 0;
+        }
+        .metric-card {
+            background: #f8f9fa;
+            border-left: 4px solid #28a745;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border-radius: 8px;
+        }
+        .anomaly-warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border-radius: 8px;
+        }
+        .success-card {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border-radius: 8px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # vLLM Metrics Configuration
+    ALL_METRICS = {
+        "Prompt Tokens Created": "vllm:request_prompt_tokens_created",
+        "P95 Latency (s)": "vllm:e2e_request_latency_seconds_count",
+        "Requests Running": "vllm:num_requests_running",
+        "GPU Usage (%)": "vllm:gpu_cache_usage_perc",
+        "Output Tokens Created": "vllm:request_generation_tokens_created",
+        "Inference Time (s)": "vllm:request_inference_time_seconds_count",
+        "Total Requests": "vllm:num_total_requests",
+        "Finished Requests": "vllm:num_finished_requests",
+        "Aborted Requests": "vllm:num_aborted_requests",
+        "GPU Cache Usage (Bytes)": "vllm:gpu_cache_usage_bytes",
+        "Scheduler Running Queue Size": "vllm:scheduler_running_queue_size",
+        "Scheduler Waiting Queue Size": "vllm:scheduler_waiting_queue_size",
+    }
+    
+    CORE_METRICS = [
+        "Prompt Tokens Created",
+        "P95 Latency (s)", 
+        "Requests Running",
+        "GPU Usage (%)",
+        "Output Tokens Created",
+        "Total Requests"
+    ]
+    
+    # Sidebar
+    st.sidebar.title("🔍 AI Observability PoC")
+    st.sidebar.markdown("*Enhanced with Korrel8r correlation*")
+    
+    # Service status check
+    @st.cache_data(ttl=60)
+    def check_services():
+        services = {}
+        try:
+            resp = requests.get(f"{KORREL8R_URL}/api/v1alpha1/domains", timeout=5)
+            services["korrel8r"] = resp.status_code == 200
+        except:
+            services["korrel8r"] = False
+        
+        try:
+            resp = requests.get(f"{BACKEND_API_URL}/health", timeout=5)
+            services["backend"] = resp.status_code == 200
+        except:
+            services["backend"] = False
+            
+        try:
+            resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query?query=up", timeout=5)
+            services["prometheus"] = resp.status_code == 200
+        except:
+            services["prometheus"] = False
+            
+        return services
+    
+    services = check_services()
+    st.sidebar.markdown("### 🚀 Service Status")
+    for service, status in services.items():
+        emoji = "✅" if status else "❌"
+        st.sidebar.markdown(f"{emoji} {service.title()}")
+    
+    st.sidebar.markdown("### 🔧 Configuration")
+    st.sidebar.markdown(f"**Korrel8r**: `{KORREL8R_URL}`")
+    st.sidebar.markdown(f"**Backend**: `{BACKEND_API_URL}`")
+    st.sidebar.markdown(f"**Prometheus**: `{PROMETHEUS_URL}`")
+    st.sidebar.markdown(f"**LLM**: `{LLM_ENDPOINT}`")
+    
+    # Navigation
+    page = st.sidebar.radio("Navigate to:", [
+        "📊 Metrics Analysis", 
+        "🤖 Chat with Metrics", 
+        "🔍 Traces",
+        "🔄 Correlation",
+        "🧠 AI Analysis"
+    ])
+    
+    # Helper functions
+    def fetch_metrics(query, model_name, start, end, namespace=None):
+        """Fetch metrics from Prometheus"""
+        try:
+            if namespace:
+                promql_query = f'{query}{{model_name="{model_name}", namespace="{namespace}"}}'
+            else:
+                promql_query = f'{query}{{model_name="{model_name}"}}'
+                
+            response = requests.get(
+                f"{PROMETHEUS_URL}/api/v1/query_range",
+                params={
+                    "query": promql_query,
+                    "start": start,
+                    "end": end,
+                    "step": "30s"
+                },
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()["data"]["result"]
+                rows = []
+                for series in result:
+                    for val in series["values"]:
+                        ts = datetime.fromtimestamp(float(val[0]))
+                        value = float(val[1])
+                        row = dict(series["metric"])
+                        row["timestamp"] = ts
+                        row["value"] = value
+                        rows.append(row)
+                return pd.DataFrame(rows)
+            else:
+                st.error(f"Prometheus query failed: {response.status_code}")
+                return pd.DataFrame()
+                
+        except Exception as e:
+            st.error(f"Error fetching metrics: {e}")
+            return pd.DataFrame()
+    
+    def detect_anomalies(df, label):
+        """Detect anomalies in metric data"""
+        if df.empty:
+            return "No data"
+        mean = df["value"].mean()
+        std = df["value"].std()
+        p90 = df["value"].quantile(0.9)
+        latest_val = df["value"].iloc[-1]
+        if latest_val > p90:
+            return f"⚠️ {label} spike (latest={latest_val:.2f}, >90th pct)"
+        elif latest_val < (mean - std):
+            return f"⚠️ {label} unusually low (latest={latest_val:.2f}, mean={mean:.2f})"
+        return f"{label} stable (latest={latest_val:.2f}, mean={mean:.2f})"
+    
+    def describe_trend(df):
+        """Describe trend in metric data"""
+        if df.empty or len(df) < 2:
+            return "not enough data"
+        df = df.sort_values("timestamp")
+        x = (df["timestamp"] - df["timestamp"].min()).dt.total_seconds()
+        y = df["value"]
+        if x.nunique() <= 1:
+            return "flat"
+        slope, *_ = linregress(x, y)
+        if slope > 0.01:
+            return "increasing"
+        elif slope < -0.01:
+            return "decreasing"
+        return "stable"
+    
+    def query_korrel8r(start_signal, goal_type="trace"):
+        """Query Korrel8r for correlations"""
+        try:
+            payload = {
+                "start": {
+                    "class": "metric",
+                    "queries": [start_signal]
+                },
+                "goals": [goal_type]
+            }
+            
+            response = requests.post(
+                f"{KORREL8R_URL}/api/v1alpha1/lists/goals",
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                st.error(f"Korrel8r query failed: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            st.error(f"Error querying Korrel8r: {e}")
+            return None
+    
+    def analyze_with_llm(prompt):
+        """Analyze with LLM"""
+        # Use the cluster service URL
+        service_url = "http://llm-d-inference-gateway-istio.llm-d.svc.cluster.local:80"
+        
+        # Truncate very long prompts
+        if len(prompt) > 2000:
+            prompt = prompt[:2000] + "..."
+        
+        try:
+            payload = {
+                "model": "meta-llama/Llama-3.2-3B-Instruct",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 500,  # Reduced for stability
+                "temperature": 0.1
+            }
+            
+            headers = {"Content-Type": "application/json"}
+            api_response = requests.post(f"{service_url}/v1/chat/completions", json=payload, headers=headers, timeout=30)
+            if api_response.status_code == 200:
+                result = api_response.json()
+                return result["choices"][0]["message"]["content"]
+            else:
+                # Include more debug info
+                return f"LLM API failed: {api_response.status_code} - Response: {api_response.text[:300]} - Prompt length: {len(prompt)}"
+                
+        except Exception as e:
+            return f"LLM connection failed: {str(e)} - Prompt length: {len(prompt)}"
+        
+        return f"All LLM endpoints failed. {service_info}. Please check if the LLM service is running and accessible."
+    
+    # Page Content
+    if page == "📊 Metrics Analysis":
+        st.title("📊 AI Metric Summarizer")
+        st.markdown("**Real-time vLLM metrics analysis with AI insights**")
+        
+        # Model and namespace selection
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            model_name = st.text_input("Model Name", value="meta-llama/Llama-3.2-3B-Instruct")
+        with col2:
+            namespace = st.text_input("Namespace", value="llm-d")
+        with col3:
+            time_range = st.selectbox("Time Range", ["Last 1h", "Last 6h", "Last 24h"], index=0)
+        
+        # Calculate time range
+        end_time = datetime.now()
+        if time_range == "Last 1h":
+            start_time = end_time - timedelta(hours=1)
+        elif time_range == "Last 6h":
+            start_time = end_time - timedelta(hours=6)
+        else:
+            start_time = end_time - timedelta(hours=24)
+        
+        if st.button("🔄 Analyze Metrics"):
+            with st.spinner("Fetching and analyzing metrics..."):
+                # Fetch core metrics
+                metrics_data = {}
+                for label in CORE_METRICS:
+                    query = ALL_METRICS[label]
+                    df = fetch_metrics(
+                        query, model_name, 
+                        start_time.timestamp(), 
+                        end_time.timestamp(), 
+                        namespace
+                    )
+                    metrics_data[label] = df
+                
+                # Display metric cards
+                st.markdown("### 📈 Metric Dashboard")
+                cols = st.columns(3)
+                for i, (label, df) in enumerate(metrics_data.items()):
+                    with cols[i % 3]:
+                        if not df.empty:
+                            latest_val = df["value"].iloc[-1]
+                            trend = describe_trend(df)
+                            anomaly = detect_anomalies(df, label)
+                            
+                            st.markdown(f"""
+                            <div class="metric-card">
+                                <h4>{label}</h4>
+                                <h2>{latest_val:.2f}</h2>
+                                <p>Trend: {trend}</p>
+                                <p>{anomaly}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"""
+                            <div class="metric-card">
+                                <h4>{label}</h4>
+                                <p>No data available</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                
+                # Visualizations
+                st.markdown("### 📊 Metric Trends")
+                for label, df in metrics_data.items():
+                    if not df.empty:
+                        fig = px.line(df, x='timestamp', y='value', title=f"{label} Over Time")
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                # AI Analysis
+                st.markdown("### 🧠 AI Insights")
+                if any(not df.empty for df in metrics_data.values()):
+                    # Build analysis prompt
+                    analysis_prompt = f"""
+                    Analyze the following vLLM model metrics for {model_name} in namespace {namespace}:
+                    
+                    """
+                    
+                    for label, df in metrics_data.items():
+                        if not df.empty:
+                            latest = df["value"].iloc[-1]
+                            trend = describe_trend(df)
+                            anomaly = detect_anomalies(df, label)
+                            analysis_prompt += f"- {label}: {latest:.2f} ({trend}, {anomaly})\n"
+                    
+                    analysis_prompt += """
+                    
+                    Please provide:
+                    1. Overall health assessment
+                    2. Key insights and recommendations
+                    3. Any performance concerns
+                    4. Optimization suggestions
+                    """
+                    
+                    with st.spinner("Generating AI insights..."):
+                        ai_analysis = analyze_with_llm(analysis_prompt)
+                        st.markdown(ai_analysis)
+    
+    elif page == "🤖 Chat with Metrics":
+        st.title("🤖 Chat with Prometheus")
+        st.markdown("**Natural language querying of your vLLM metrics**")
+        
+        # Chat interface
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
+        
+        # Model selection
+        model_name = st.text_input("Model Name", value="meta-llama/Llama-3.2-3B-Instruct")
+        namespace = st.text_input("Namespace", value="llm-d")
+        
+        # Chat input
+        user_question = st.text_input("Ask about your metrics:", placeholder="How is GPU usage trending?")
+        
+        if st.button("Ask") and user_question:
+            # Add user message to history
+            st.session_state.chat_history.append({"role": "user", "content": user_question})
+            
+            with st.spinner("Analyzing metrics and generating response..."):
+                # Fetch relevant metrics
+                end_time = datetime.now()
+                start_time = end_time - timedelta(hours=1)
+                
+                metrics_context = ""
+                for label in CORE_METRICS:
+                    query = ALL_METRICS[label]
+                    df = fetch_metrics(
+                        query, model_name,
+                        start_time.timestamp(),
+                        end_time.timestamp(),
+                        namespace
+                    )
+                    if not df.empty:
+                        latest = df["value"].iloc[-1]
+                        trend = describe_trend(df)
+                        metrics_context += f"{label}: {latest:.2f} ({trend}), "
+                
+                # Generate response
+                chat_prompt = f"""
+                User question: {user_question}
+                
+                Current metrics for {model_name}:
+                {metrics_context}
+                
+                Please answer the user's question based on the current metrics data.
+                """
+                
+                response = analyze_with_llm(chat_prompt)
+                st.session_state.chat_history.append({"role": "assistant", "content": response})
+        
+        # Display chat history
+        for message in st.session_state.chat_history:
+            if message["role"] == "user":
+                st.markdown(f"**You**: {message['content']}")
+            else:
+                st.markdown(f"**AI**: {message['content']}")
+    
+    elif page == "🔍 Traces":
+        st.title("🔍 Distributed Traces")
+        st.markdown("**Browse and correlate traces with metrics**")
+        
+        trace_id = st.text_input("Trace ID:", placeholder="abc123def456...")
+        
+        if st.button("🔄 Find Related Metrics") and trace_id:
+            with st.spinner("Finding correlations..."):
+                correlations = query_korrel8r(f'trace:{{.trace_id="{trace_id}"}}', "metric")
+                
+                if correlations:
+                    st.markdown("""
+                    <div class="success-card">
+                        <h3>🎯 Correlation Results</h3>
+                        <p>Found trace → metric correlations!</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    st.json(correlations)
+    
+    elif page == "🔄 Correlation":
+        st.title("🔄 Cross-Signal Correlation")
+        st.markdown("**Cross-signal correlation powered by Korrel8r**")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 📈 Start with Metrics")
+            metric_query = st.text_input("Prometheus Query", placeholder="vllm:gpu_cache_usage_perc")
+            
+            if st.button("🔍 Find Related Traces"):
+                if metric_query:
+                    with st.spinner("Correlating signals..."):
+                        correlations = query_korrel8r(metric_query, "trace")
+                        
+                        if correlations:
+                            st.markdown("""
+                            <div class="correlation-card">
+                                <h3>🎯 Correlation Results</h3>
+                                <p>Found metric → trace correlations!</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            st.json(correlations)
+        
+        with col2:
+            st.markdown("### 🔍 Start with Traces")
+            trace_id = st.text_input("Trace ID", placeholder="abc123def456...")
+            
+            if st.button("📊 Find Related Metrics"):
+                if trace_id:
+                    with st.spinner("Correlating signals..."):
+                        correlations = query_korrel8r(f'trace:{{.trace_id="{trace_id}"}}', "metric")
+                        
+                        if correlations:
+                            st.markdown("""
+                            <div class="correlation-card">
+                                <h3>🎯 Correlation Results</h3>
+                                <p>Found trace → metric correlations!</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            st.json(correlations)
+    
+    elif page == "🧠 AI Analysis":
+        st.title("🧠 AI-Powered Correlation Analysis")
+        st.markdown("**LLM + Korrel8r Integration for Incident Analysis**")
+        
+        incident_description = st.text_area(
+            "Describe the issue:",
+            placeholder="High GPU usage and increased latency around 14:30..."
+        )
+        
+        model_name = st.text_input("Model Name", value="meta-llama/Llama-3.2-3B-Instruct")
+        namespace = st.text_input("Namespace", value="llm-d")
+        
+        if st.button("🔍 Analyze with AI") and incident_description:
+            with st.spinner("🤖 AI is analyzing correlations..."):
+                
+                # Fetch current metrics for context
+                end_time = datetime.now()
+                start_time = end_time - timedelta(hours=2)
+                
+                metrics_context = ""
+                for label in CORE_METRICS:
+                    query = ALL_METRICS[label]
+                    df = fetch_metrics(
+                        query, model_name,
+                        start_time.timestamp(),
+                        end_time.timestamp(),
+                        namespace
+                    )
+                    if not df.empty:
+                        latest = df["value"].iloc[-1]
+                        trend = describe_trend(df)
+                        anomaly = detect_anomalies(df, label)
+                        metrics_context += f"- {label}: {latest:.2f} ({trend}, {anomaly})\n"
+                
+                # Generate comprehensive analysis
+                analysis_prompt = f"""
+                Incident Report: {incident_description}
+                
+                Current Metrics for {model_name}:
+                {metrics_context}
+                
+                Please provide a comprehensive analysis including:
+                1. Root cause assessment
+                2. Severity level (low/medium/high)
+                3. Specific recommendations
+                4. Correlation insights
+                
+                Format as structured analysis.
+                """
+                
+                analysis = analyze_with_llm(analysis_prompt)
+                
+                st.markdown("### 🎯 AI Analysis Results")
+                st.markdown(analysis)
+                
+                # Show correlations if available
+                st.markdown("### 🔄 Cross-Signal Correlations")
+                correlations = query_korrel8r("vllm:gpu_cache_usage_perc", "trace")
+                if correlations:
+                    st.json(correlations)
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("🚀 **PoC Status**: Real vLLM metrics analysis with Korrel8r correlation and LLM insights")
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observe-ui
+  namespace: ai-observability-poc
+  labels:
+    app: observe-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: observe-ui
+  template:
+    metadata:
+      labels:
+        app: observe-ui
+    spec:
+      containers:
+      - name: observe-ui
+        image: python:3.11-slim
+        ports:
+        - containerPort: 8501
+          name: streamlit
+        env:
+        - name: KORREL8R_URL
+          value: "http://korrel8r:8080"
+        - name: BACKEND_API_URL
+          value: "http://observability-backend:8000"
+        - name: PROMETHEUS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-endpoints
+              key: prometheus-url
+        - name: TEMPO_URL
+          valueFrom:
+            configMapKeyRef:
+              name: observability-endpoints
+              key: tempo-url
+        - name: LLM_ENDPOINT
+          value: "http://llm-d-inference-gateway-istio.llm-d.svc.cluster.local:80"
+        command:
+        - /bin/bash
+        - -c
+        - |
+          pip install streamlit plotly pandas requests scipy
+          cd /app
+          streamlit run observe_ui.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+        volumeMounts:
+        - name: ui-code
+          mountPath: /app
+          readOnly: true
+        resources:
+          requests:
+            cpu: 300m
+            memory: 768Mi
+          limits:
+            cpu: 1
+            memory: 2Gi
+      volumes:
+      - name: ui-code
+        configMap:
+          name: observe-ui-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observe-ui
+  namespace: ai-observability-poc
+  labels:
+    app: observe-ui
+spec:
+  selector:
+    app: observe-ui
+  ports:
+  - name: streamlit
+    port: 8501
+    targetPort: 8501
+  type: ClusterIP
