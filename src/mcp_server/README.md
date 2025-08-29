@@ -191,6 +191,40 @@ The vLLM discovery tools query Prometheus metrics using identical logic as the m
 
 ## 🔧 Development
 
+### Running Tests (mcp_server)
+
+Use these commands from the project root to run the MCP Server unit tests:
+
+```bash
+# Run all mcp_server tests
+PYTHONPATH=src pytest -q tests/mcp_server
+
+# Run a specific test file
+PYTHONPATH=src pytest -q tests/mcp_server/test_api.py
+
+# Run a single test function
+PYTHONPATH=src pytest -q tests/mcp_server/test_tools.py -k test_analyze_vllm_success
+```
+
+Notes:
+- `PYTHONPATH=src` lets tests import `mcp_server` from the source tree.
+
+Using uv (alternative):
+
+```bash
+# Install test dependencies defined in pyproject.toml
+uv sync --group test
+
+# Run all mcp_server tests
+PYTHONPATH=src uv run pytest -q tests/mcp_server
+
+# Run a specific test file
+PYTHONPATH=src uv run pytest -q tests/mcp_server/test_api.py
+
+# Run a single test function
+PYTHONPATH=src uv run pytest -q tests/mcp_server/test_tools.py -k test_analyze_vllm_success
+```
+
 ### Local Development with Port Forwarding
 
 1. **Start development environment:**
