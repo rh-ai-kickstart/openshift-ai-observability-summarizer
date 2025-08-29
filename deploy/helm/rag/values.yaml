@@ -29,9 +29,9 @@ minio:
     enabled: true
     bucket: documents
     urls: 
-    - https://raw.githubusercontent.com/rh-ai-kickstart/RAG/refs/heads/main/notebooks/Zippity_Zoo_Grand_Invention.pdf
-    - https://raw.githubusercontent.com/rh-ai-kickstart/RAG/refs/heads/main/notebooks/Zippity_Zoo_and_the_Town_of_Tumble_Town.pdf
-    - https://raw.githubusercontent.com/rh-ai-kickstart/RAG/refs/heads/main/notebooks/Zippity_Zoo_and_the_Town_of_Whispering_Willows.pdf
+    - https://raw.githubusercontent.com/rh-ai-quickstart/RAG/refs/heads/main/notebooks/Zippity_Zoo_Grand_Invention.pdf
+    - https://raw.githubusercontent.com/rh-ai-quickstart/RAG/refs/heads/main/notebooks/Zippity_Zoo_and_the_Town_of_Tumble_Town.pdf
+    - https://raw.githubusercontent.com/rh-ai-quickstart/RAG/refs/heads/main/notebooks/Zippity_Zoo_and_the_Town_of_Whispering_Willows.pdf
 
 
 llama-stack:

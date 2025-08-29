@@ -444,7 +444,7 @@ oc get events -n <DEFAULT_NAMESPACE> --sort-by='.lastTimestamp'
 #### OpenShift Access
 - **For GitHub Actions workflows**: Run `./scripts/ocp-setup.sh -s -n <namespace>` to generate the required token
 - **Manual setup**: Access your password manager and search for:
-  - `openshift-ai-observability-summarizer ai-kickstart (aiobs)` for OCP server user/password
+  - `openshift-ai-observability-summarizer ai-quickstart (aiobs)` for OCP server user/password
   - **Required fields**: Username and Password
 - **Purpose**: Deploying to OpenShift clusters
 

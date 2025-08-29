@@ -2,7 +2,7 @@
 
 [![CNCF Compatible](https://img.shields.io/badge/CNCF%20Compatible-Yes-blue.svg)](https://www.cncf.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Build Status](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/actions)
+[![Build Status](https://github.com/rh-ai-quickstart/openshift-ai-observability-summarizer/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/rh-ai-quickstart/openshift-ai-observability-summarizer/actions)
 
 
 <img src="docs/img/logo.png" alt="OpenShift AI Observability Summarizer" width="200"/>
@@ -629,7 +629,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full contribution guidelines.
 
 ## Community
 
-- [GitHub Discussions](https://github.com/rh-ai-kickstart/openshift-ai-observability-summarizer/discussions)
+- [GitHub Discussions](https://github.com/rh-ai-quickstart/openshift-ai-observability-summarizer/discussions)
 - [CNCF Landscape](https://landscape.cncf.io/)
 - [OpenShift AI](https://www.redhat.com/en/technologies/cloud-computing/openshift/openshift-ai)
 - [Prometheus](https://prometheus.io/)
