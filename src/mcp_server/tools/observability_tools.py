@@ -4,6 +4,7 @@ This module provides MCP tools for interacting with OpenShift AI observability d
 - list_models: Get available AI models
 - list_namespaces: List monitored namespaces
 - get_model_config: Show configured LLM models for summarization
+- analyze_vllm: Analyze vLLM metrics and summarize using LLM
 - analyze_openshift: Analyze OpenShift metrics by category/scope using API logic
 """
 
@@ -16,8 +17,7 @@ from core.metrics import get_models_helper, get_namespaces_helper, get_vllm_metr
 from core.llm_client import build_prompt, summarize_with_llm, extract_time_range_with_info
 from core.models import AnalyzeRequest
 from core.response_validator import ResponseType
-from api.metrics_api import analyze_openshift as _api_analyze_openshift
-from core.models import OpenShiftAnalyzeRequest
+from core.metrics import analyze_openshift_metrics
 from core.config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
 import requests
 from datetime import datetime
@@ -264,7 +264,7 @@ def analyze_openshift(
             end_datetime=end_datetime,
         )
 
-        req = OpenShiftAnalyzeRequest(
+        result = analyze_openshift_metrics(
             metric_category=metric_category,
             scope=scope,
             namespace=namespace or "",
@@ -273,8 +273,6 @@ def analyze_openshift(
             summarize_model_id=summarize_model_id or os.getenv("DEFAULT_SUMMARIZE_MODEL", ""),
             api_key=api_key or os.getenv("LLM_API_TOKEN", ""),
         )
-
-        result = _api_analyze_openshift(req)  # Calls the FastAPI handler logic directly
 
         # Format the response for MCP consumers
         summary = result.get("llm_summary", "")
@@ -287,4 +285,4 @@ def analyze_openshift(
         content = f"{header}\n\n{summary}".strip()
         return _resp(content)
     except Exception as e:
-        return _resp(f"Error running analyze-openshift: {str(e)}", is_error=True)
+        return _resp(f"Error running analyze_openshift: {str(e)}", is_error=True)

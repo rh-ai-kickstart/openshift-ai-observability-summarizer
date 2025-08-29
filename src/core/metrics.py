@@ -14,6 +14,10 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from .config import PROMETHEUS_URL, THANOS_TOKEN, VERIFY_SSL
+from fastapi import HTTPException
+from .llm_client import summarize_with_llm
+from .response_validator import ResponseType
+from .llm_client import build_openshift_prompt
 
 
 def get_models_helper() -> List[str]:
@@ -580,6 +584,84 @@ def get_namespace_specific_metrics(category):
     }
 
     return namespace_aware_metrics.get(category, {})
+
+
+def analyze_openshift_metrics(
+    metric_category: str,
+    scope: str,
+    namespace: Optional[str],
+    start_ts: int,
+    end_ts: int,
+    summarize_model_id: Optional[str],
+    api_key: Optional[str],
+) -> Dict[str, Any]:
+    """Core analyze-openshift logic extracted from API.
+
+    Returns a dict matching the API response fields (health_prompt, llm_summary, metrics, etc.).
+    Raises HTTPException for client (400) and server (500) errors.
+    """
+    try:
+        openshift_metrics = get_openshift_metrics()
+
+        # Validate metric category based on scope
+        if scope == "namespace_scoped" and namespace:
+            namespace_metrics = get_namespace_specific_metrics(metric_category)
+            if not namespace_metrics:
+                if metric_category not in openshift_metrics:
+                    raise HTTPException(status_code=400, detail=f"Invalid metric category: {metric_category}")
+                metrics_to_fetch = openshift_metrics[metric_category]
+            else:
+                metrics_to_fetch = namespace_metrics
+        else:
+            if metric_category not in openshift_metrics:
+                raise HTTPException(status_code=400, detail=f"Invalid metric category: {metric_category}")
+            metrics_to_fetch = openshift_metrics[metric_category]
+
+        namespace_for_query = namespace if scope == "namespace_scoped" else None
+
+        # Fetch metrics
+        metric_dfs: Dict[str, Any] = {}
+        for label, query in metrics_to_fetch.items():
+            try:
+                df = fetch_openshift_metrics(query, start_ts, end_ts, namespace_for_query)
+                metric_dfs[label] = df
+            except Exception:
+                metric_dfs[label] = pd.DataFrame()
+
+        # Build scope description
+        scope_description = f"{scope.replace('_', ' ').title()}"
+        if scope == "namespace_scoped" and namespace:
+            scope_description += f" ({namespace})"
+
+        # Build OpenShift metrics prompt and summarize
+        prompt = build_openshift_prompt(
+            metric_dfs, metric_category, namespace_for_query, scope_description
+        )
+        summary = summarize_with_llm(
+            prompt, summarize_model_id or "", ResponseType.OPENSHIFT_ANALYSIS, api_key or ""
+        )
+
+        # Serialize metric DataFrames
+        serialized_metrics: Dict[str, Any] = {}
+        for label, df in metric_dfs.items():
+            if "timestamp" not in df.columns:
+                df["timestamp"] = pd.Series(dtype="datetime64[ns]")
+            if "value" not in df.columns:
+                df["value"] = pd.Series(dtype="float")
+            serialized_metrics[label] = df[["timestamp", "value"]].to_dict(orient="records")
+
+        return {
+            "metric_category": metric_category,
+            "scope": scope,
+            "namespace": namespace,
+            "health_prompt": prompt,
+            "llm_summary": summary,
+            "metrics": serialized_metrics,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Metric Fetching Functions ---

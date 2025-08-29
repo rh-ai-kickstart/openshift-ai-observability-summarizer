@@ -46,6 +46,7 @@ from core.metrics import (
     fetch_metrics,
     fetch_openshift_metrics,
     get_namespaces_helper,
+    analyze_openshift_metrics,
 )
 from core.analysis import (
     detect_anomalies,
@@ -370,88 +371,15 @@ Provide a concise technical response focusing on operational insights and recomm
 @app.post("/analyze-openshift")
 def analyze_openshift(req: OpenShiftAnalyzeRequest):
     """Analyze OpenShift metrics for a specific category and scope"""
-    try:
-        openshift_metrics = get_openshift_metrics()
-        
-        # Validate metric category based on scope
-        if req.scope == "namespace_scoped" and req.namespace:
-            # For namespace-scoped analysis, check against namespace-specific metrics first
-            namespace_metrics = get_namespace_specific_metrics(req.metric_category)
-            if not namespace_metrics:
-                # Fall back to cluster-wide metrics if no namespace-specific metrics available
-                if req.metric_category not in openshift_metrics:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Invalid metric category: {req.metric_category}",
-                    )
-                metrics_to_fetch = openshift_metrics[req.metric_category]
-            else:
-                metrics_to_fetch = namespace_metrics
-        else:
-            # For cluster-wide analysis, check against cluster-wide metrics
-            if req.metric_category not in openshift_metrics:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid metric category: {req.metric_category}",
-                )
-            metrics_to_fetch = openshift_metrics[req.metric_category]
-
-        # Determine namespace for fetching based on scope
-        namespace_for_query = req.namespace if req.scope == "namespace_scoped" else None
-
-        metric_dfs = {}
-        # Fetch metrics for the specified category
-        for label, query in metrics_to_fetch.items():
-            try:
-                df = fetch_openshift_metrics(
-                    query, req.start_ts, req.end_ts, namespace_for_query
-                )
-                metric_dfs[label] = df
-            except Exception as e:
-                print(f"Error fetching {label}: {e}")
-                metric_dfs[label] = pd.DataFrame()
-
-        # Build scope description for prompt
-        scope_description = f"{req.scope.replace('_', ' ').title()}"
-        if req.scope == "namespace_scoped" and req.namespace:
-            scope_description += f" ({req.namespace})"
-
-        # Build metrics summary for the LLM using OpenShift-specific prompt
-        prompt = build_openshift_prompt(
-            metric_dfs, req.metric_category, namespace_for_query, scope_description
-        )
-
-        # Get LLM summary
-        summary = summarize_with_llm(prompt, req.summarize_model_id, ResponseType.OPENSHIFT_ANALYSIS, req.api_key)
-
-        # Serialize metrics data
-        serialized_metrics = {}
-        for label, df in metric_dfs.items():
-            for col in ["timestamp", "value"]:
-                if col not in df.columns:
-                    df[col] = pd.Series(
-                        dtype="datetime64[ns]" if col == "timestamp" else "float"
-                    )
-            serialized_metrics[label] = df[["timestamp", "value"]].to_dict(
-                orient="records"
-            )
-
-        return {
-            "metric_category": req.metric_category,
-            "scope": req.scope,
-            "namespace": req.namespace,
-            "health_prompt": prompt,
-            "llm_summary": summary,
-            "metrics": serialized_metrics,
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error in analyze_openshift: {e}")
-        raise HTTPException(
-            status_code=500, detail="Please check your API Key or try again later."
-        )
+    return analyze_openshift_metrics(
+        metric_category=req.metric_category,
+        scope=req.scope,
+        namespace=req.namespace,
+        start_ts=req.start_ts,
+        end_ts=req.end_ts,
+        summarize_model_id=req.summarize_model_id,
+        api_key=req.api_key,
+    )
 
 
 @app.post("/calculate-metrics")
