@@ -10,6 +10,7 @@ The MCP server provides the following tools:
 - **`list_namespaces`** - List monitored Kubernetes namespaces with observability data
 - **`get_model_config`** - Get available LLM models for summarization and analysis
 - **`analyze_vllm`** - Analyze vLLM metrics for a model and summarize with an LLM
+- **`analyze_openshift`** - Analyze OpenShift metrics by category and scope, returning an LLM summary
 
 ## 📋 Prerequisites
 
@@ -173,6 +174,7 @@ Troubleshooting tips:
 | `list_namespaces` | Lists monitored Kubernetes namespaces | Sorted list of namespace names |
 | `get_model_config` | Gets LLM models for summarization | Internal/external model configurations |
 | `analyze_vllm` |  fetch metrics, build prompt, summarize | Text summary with prompt and metrics preview |
+| `analyze_openshift` | Analyze metrics for a given category/scope | Text block with LLM summary and context |
 
 The vLLM discovery tools query Prometheus metrics using identical logic as the main metrics API. The model config tool reads environment configuration for LLM models. 
 

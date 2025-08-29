@@ -126,13 +126,15 @@ def generate_claude_config(mcp_stdio_path: str) -> Dict[str, Any]:
                     "list_models",
                     "list_namespaces",
                     "get_model_config",
-                    "analyze_vllm"
+                    "analyze_vllm",
+                    "analyze_openshift"
                 ],
                 "alwaysAllow": [
                     "list_models", 
                     "list_namespaces",
                     "get_model_config",
-                    "analyze_vllm"
+                    "analyze_vllm",
+                    "analyze_openshift"
                 ],
                 "disabled": False
             }
